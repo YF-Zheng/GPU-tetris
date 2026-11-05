@@ -1,5 +1,7 @@
 # GPU Tetris
 
+**[在线交互指南与调度演示](https://yf-zheng.github.io/GPU-tetris/)** · [HTML 源文件](guidance/unified-gpu-smi-guide.html)
+
 独立的单机 GPU 任务队列与终端监控工具。无需训练框架、Conda、数据库服务或 Python 第三方运行时依赖。
 
 **当前版本：0.3.0 Alpha。支持 Linux、Python 3.10+、NVIDIA GPU。** 适合单用户工作站或服务器，不是多租户集群调度器。
