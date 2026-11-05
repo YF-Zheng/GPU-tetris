@@ -201,9 +201,18 @@ class FillerTests(unittest.TestCase):
         self.job()
         tick(self.pool, {}, {}, sample=self.sample(99))
         self.wait(filler, {'cancelled'})
-        tick(self.pool, {}, {})
-        with transaction(self.pool) as db:
-            stamp = rearm_times(db)['0']
+        # The worker commits its terminal status before its process exits.
+        # Recovery intentionally retains the GPU until that supervisor is gone.
+        deadline = time.monotonic() + 8
+        stamp = None
+        while time.monotonic() < deadline:
+            tick(self.pool, {}, {})
+            with transaction(self.pool) as db:
+                stamp = rearm_times(db).get('0')
+            if stamp is not None:
+                break
+            time.sleep(.05)
+        self.assertIsNotNone(stamp, 'Filler recovery did not persist the re-arm timestamp')
         config = dict(DEFAULTS, filler_enabled=True, observation_seconds=0, launch_cooldown_seconds=0,
                       filler_rearm_seconds=1800)
         views = [dict(index=0, uuid='U', count=0, util=0, free_mb=10**6, policy='READY')]
