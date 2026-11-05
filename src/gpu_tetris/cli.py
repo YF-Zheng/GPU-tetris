@@ -126,15 +126,18 @@ def dispatch(args):
         if command[:1] == ['--']:
             command = command[1:]
         if args.keeper:
-            from .keepers import PRESETS, build_parser as keeper_parser, __file__ as keepers_file_path
-            keepers_file = lambda: keepers_file_path
+            from .keepers import PRESETS, build_parser as keeper_parser, resolve, __file__ as keepers_file_path
             if args.keeper not in PRESETS:
                 raise ValueError(f'Unknown keeper preset {args.keeper!r}; run: tetris keepers')
-            keeper_parser().parse_args([args.keeper, *command])  # reject bad options before queuing
+            keeper_args = resolve(keeper_parser().parse_args([args.keeper, *command]))
+            if args.per_gpu and not args.gpus:
+                raise ValueError('--per-gpu requires an explicit --gpus list')
+            if args.gpu_count != 1 or args.sharing == 'exclusive' or args.priority != 0:
+                raise ValueError('Keeper requires one shared GPU and fixed lowest priority (omit --priority)')
             with transaction(pool) as db:
                 simulated = get_config(db)['simulate']
             interpreter = args.keeper_python or sys.executable
-            if not simulated:
+            if not simulated and keeper_args.backend != 'none':
                 # find_spec avoids importing torch (slow); catches the common "no torch here" mistake early.
                 try:
                     probe = subprocess.run([interpreter, '-c', 'import importlib.util,sys;sys.exit(0 if importlib.util.find_spec("torch") else 3)'],
@@ -144,11 +147,13 @@ def dispatch(args):
                 if probe.returncode != 0:
                     raise ValueError(f'PyTorch not found for {interpreter}; install it there or pass --keeper-python PATH')
             # keepers.py is stdlib-only and self-contained, so run it by path with any interpreter.
-            command = [interpreter, keepers_file(), args.keeper, *command]
+            command = [interpreter, keepers_file_path, args.keeper, *command]
             args.filler = True
             args.name = args.name or f'keeper-{args.keeper}'
         elif args.per_gpu:
             raise ValueError('--per-gpu requires --keeper')
+        elif args.keeper_python:
+            raise ValueError('--keeper-python requires --keeper')
         env = {}
         for item in args.env:
             key, sep, value = item.partition('=')
@@ -223,7 +228,8 @@ def dispatch(args):
         from .gpu import query
         with transaction(pool) as db:
             config = get_config(db)
-        devices, _ = query(config['simulate'], config['simulate_gpu_count'])
+        devices, _ = query(config['simulate'], config['simulate_gpu_count'],
+                           query_apps=config['ownership_mode'] == 'strict')
         print(f'Python {sys.version.split()[0]} | pool writable: {os.access(pool, os.W_OK)} | GPUs: {len(devices)}')
         print('SIMULATION: CPU only' if config['simulate'] else 'NVIDIA query: OK')
 

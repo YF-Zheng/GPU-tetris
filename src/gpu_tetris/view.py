@@ -65,6 +65,7 @@ def render(data, all_jobs=False, status=None):
              f'HEARTBEAT {str(round(age, 1)) + "s" if age is not None else "unknown"}  '
              + '  '.join(f'{k.upper()} {v}' for k, v in sorted(data['counts'].items()))]
     lines.append(f'QUEUE {safe(config["queue_policy"])}  PLACEMENT {safe(config["placement_policy"])}')
+    lines.append(f'OWNERSHIP {safe(config["ownership_mode"])}  TASKS counts managed jobs only.')
     if config['simulate']:
         lines.append('SIMULATION MODE: CPU processes only; CUDA_VISIBLE_DEVICES is empty.')
     if stale:
@@ -77,7 +78,7 @@ def render(data, all_jobs=False, status=None):
     lines.append(table(['GPU', 'UTIL', 'FREE MiB', f'TASKS/{config["per_gpu_limit"]}', 'REFILL POLICY'],
                        [[g['index'], str(g['util']) + '%', g['free_mb'],
                          f'{g["count"]}/{config["per_gpu_limit"]}',
-                         'UNKNOWN / STALE' if stale else g['policy']] for g in data.get('gpus', [])]))
+                         'STALE' if stale else g['policy']] for g in data.get('gpus', [])]))
     visible = [j for j in data['jobs'] if (status is None or j['status'] in status)
                and (all_jobs or status is not None or j['status'] != 'complete')]
     lines.append(table(['ID', 'NAME', 'TYPE', 'STATUS', 'GPUs', 'NEED', 'SHARING', 'PRI', 'PID', 'TRY', 'DETAIL'],

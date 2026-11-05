@@ -1,5 +1,13 @@
 # 变更记录
 
+## 0.3.0 修复（2026-11-05）
+
+- Keeper 在提交前执行完整取值校验，拒绝越界利用率、非有限显存、无效周期与运行时长；`--per-gpu` 要求显式 GPU 列表，`--backend none` 不再强制检查 PyTorch。
+- 独立运行 Keeper 且未设置 `CUDA_VISIBLE_DEVICES` 时，利用率探针默认查询 GPU 0。
+- GPU 默认使用 `ownership_mode="single_user"`，避免队列外任务或无法映射的 PID 导致 `UNKNOWN OWNER`；可配置 `strict` 恢复进程组归属阻塞。显存/利用率查询失败仍禁止派发，`TASKS` 仅计本池任务。
+- 状态页明确显示归属模式，过期快照显示 `STALE`；GPU CSV 空行可忽略，不可用指标提供明确错误。
+- 修复 Actions 中 keeper 参数测试失败，更新 Node 24 Actions，并让每个 Python 版本独立完成检查。
+
 ## 0.3.0（Alpha，未发布）
 
 - **改名为 GPU Tetris**：包名 `gpu-tetris`，Python 包 `gpu_tetris`，命令 `tetris` / `tetris-smi`，环境变量 `TETRIS_*`。

@@ -18,6 +18,7 @@ DEFAULTS = {
     'priority_aging_seconds': 300, 'simulate_gpu_count': 1,
     'filler_enabled': False, 'filler_utilization_threshold': 30,
     'filler_rearm_seconds': 1800,
+    'ownership_mode': 'single_user',
 }
 QUEUE_POLICIES = ('fifo', 'strict_fifo', 'priority', 'small_first', 'large_first')
 PLACEMENT_POLICIES = ('balanced', 'pack', 'spread', 'most_free')
@@ -62,6 +63,8 @@ def transaction(pool):
 
 
 def validate_config(config):
+    if config['ownership_mode'] not in ('single_user', 'strict'):
+        raise ValueError('ownership_mode must be single_user or strict')
     for key in ('observation_seconds', 'launch_cooldown_seconds', 'min_free_mb', 'filler_rearm_seconds'):
         value = config[key]
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:

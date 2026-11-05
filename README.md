@@ -43,7 +43,7 @@ tetris-smi --watch 2
 - 补入后至少冷却 60 秒，并重新积累观察窗口。
 - 空闲显存至少 16000 MiB，可按任务进一步提高要求。
 - CUDA 使用 GPU UUID 绑定，避免设备枚举顺序差异。
-- 未识别的 GPU 计算进程会阻止该卡补位；查询失败时不派发。
+- 默认 `ownership_mode="single_user"`：按整卡利用率与空闲显存补位，不要求 GPU 进程属于本队列；GPU 指标查询失败时不派发。
 - 按提交时间顺序选择符合条件的任务；阻塞任务不阻挡其余任务。
 
 资源监控不是显存预留，也不是对其他程序的强制限制。`READY` 仅表示队列的资源条件满足，不保证某个具体任务马上派发。
@@ -168,7 +168,7 @@ tetris config --set filler_enabled=true
 tetris submit --keeper floor --per-gpu --gpus 0,1,2,3 -- --util 40
 ```
 
-`--keeper` 自动按 `--filler` 提交；`--per-gpu` 为 `--gpus` 中的每张卡各登记一个；`--` 之后是预设自己的参数。`--keeper-python /path/to/python` 指定装有 PyTorch 的解释器（默认用运行 `tetris` 的那个）。提交时会先检查该解释器能否找到 torch，找不到就直接报错，不会入队。
+`--keeper` 自动按 `--filler` 提交；`--per-gpu` 必须同时明确指定 `--gpus`，为其中每张卡各登记一个；`--` 之后是预设自己的参数。`--keeper-python /path/to/python` 指定装有 PyTorch 的解释器（默认用运行 `tetris` 的那个）。提交前会校验参数取值；真实 GPU 模式下还会检查该解释器能否找到 torch，找不到就直接报错，不会入队。`--backend none` 是纯 CPU 试跑，不需要 torch。
 
 两个独立的旋钮：
 
@@ -271,7 +271,9 @@ JSON 输出升级为 `schema_version=2`：使用 `gpu_ids` 数组读取完整分
 - 缺少退出凭据的尝试不自动重跑；worker 丢失但子进程还活着时保留槽位，可用 `cancel` 清理后再重试。
 - 取消会清理进程组及带同一 attempt 标识的同用户子进程，必要时升级到 SIGKILL。默认只在清理结束后报告终态。
 - **这不是 cgroup 沙箱**。任务必须保持在同一用户/PID 命名空间内，不得删除 `TETRIS_ATTEMPT_TOKEN`、清空继承环境后脱离进程组，或通过容器/特权辅助程序逃离监督。此类任务需另用 cgroup/systemd/集群调度器管理，不能保证取消清理完整。
-- 无法映射宿主 PID 的容器环境可能显示 `UNKNOWN OWNER`，这是保守阻塞，不应直接关闭安全检查。
+- 默认单用户模式不做 GPU 进程归属检查，兼容自己在队列外启动的训练以及无法映射宿主 PID 的环境；仍检查整卡显存、利用率、观察窗口及本队列任务数。队列外进程不计入 `TASKS`，也不会被队列取消；单用户模式不提供多用户资源隔离。
+- 需要保守阻塞非队列 GPU 进程时可执行 `tetris config --set 'ownership_mode="strict"'`。严格模式要求查询计算进程成功，并通过进程组匹配队列 supervisor；无法映射宿主 PID、脱离进程组的任务或外部进程可能显示 `UNKNOWN OWNER`。切回默认模式：`tetris config --set 'ownership_mode="single_user"'`。旧池缺少此配置时也采用单用户默认值。
+- `STALE` 表示调度器未运行或心跳过期，与 `UNKNOWN OWNER` 不同；先用 `tetris start` 启动或检查 `scheduler.log`。GPU 指标为 `N/A` 或查询失败仍停止派发，避免把未知指标当成空闲。
 - 不提供 exactly-once 外部副作用保证。异常任务重试前检查已写入文件、外部服务及 checkpoint。
 
 ## 安全与发布

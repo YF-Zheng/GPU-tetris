@@ -61,17 +61,21 @@ def tick(pool, history, last_launch, sample=None, now=None):
         config = get_config(db)
     started = time.time()
     try:
-        gpus, apps = (query(config['simulate'], config['simulate_gpu_count'])
-                      if config['simulate'] and config['simulate_gpu_count'] != 1
-                      else query(config['simulate'])) if sample is None else sample
+        gpus, apps = query(config['simulate'], config['simulate_gpu_count'],
+                           query_apps=config['ownership_mode'] == 'strict') if sample is None else sample
         error = None
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         gpus, apps = [], []
         error = str(exc)
         history.clear()
     now = time.time() if now is None else now
+    sampled_mode = config['ownership_mode']
     with transaction(pool) as db:
         config = get_config(db)
+        if sample is None and config['ownership_mode'] != sampled_mode:
+            gpus, apps = [], []
+            error = 'GPU ownership mode changed during query; waiting for a fresh sample'
+            history.clear()
         if runtime(db, 'policy_config') != config:
             history.clear()
             put(db, 'policy_config', config)

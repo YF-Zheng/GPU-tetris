@@ -57,8 +57,8 @@ def parse_mem(text, free_bytes):
     elif s.endswith('M'):
         s = s[:-1]
     value = float(s)
-    if value < 0:
-        raise ValueError('--mem must be nonnegative')
+    if not math.isfinite(value) or value < 0 or not math.isfinite(value * scale):
+        raise ValueError('--mem must be finite and nonnegative')
     return int(value * scale)
 
 
@@ -192,7 +192,8 @@ class _Rates(ctypes.Structure):
 
 def util_probe(interval=2.0):
     """Cached reader of the whole card's GPU-Util (NVML, then nvidia-smi). None if unavailable."""
-    target = (os.environ.get('CUDA_VISIBLE_DEVICES') or '').split(',')[0].strip()
+    visible = os.environ.get('CUDA_VISIBLE_DEVICES')
+    target = '0' if visible is None else visible.split(',')[0].strip()
     state = dict(at=-1e9, value=None)
     nvml = handle = None
     try:
@@ -270,6 +271,12 @@ def resolve(args):
         value = getattr(args, key, None)
         if value is not None and (not math.isfinite(value) or value <= 0):
             raise ValueError(f'--{key} must be positive')
+    for key in ('report', 'max_seconds'):
+        value = getattr(args, key)
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(f'--{key.replace("_", "-")} must be finite and nonnegative')
+    if args.preset == 'heartbeat' and args.burst > args.period:
+        raise ValueError('--burst must not exceed --period')
     parse_mem(args.mem, 1 << 30)  # validate early
     return args
 

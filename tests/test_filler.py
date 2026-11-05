@@ -150,6 +150,7 @@ class FillerTests(unittest.TestCase):
 
     def test_unknown_owner_still_blocks(self):
         self.enable()
+        self.assertEqual(self.cli('config', '--set', 'ownership_mode="strict"'), 0)
         key = self.job(filler=True)
         cards, _ = self.sample()
         with patch('gpu_tetris.gpu.process_group', return_value=-1):

@@ -7,7 +7,7 @@ import subprocess
 from .core import allocated_gpus, exclusive
 
 
-def query(simulate=False, simulate_gpu_count=1):
+def query(simulate=False, simulate_gpu_count=1, *, query_apps=True):
     if simulate:
         return [dict(index=i, uuid=f'SIMULATED-CPU-{i}', free_mb=1048576, util=0)
                 for i in range(simulate_gpu_count)], []
@@ -15,10 +15,27 @@ def query(simulate=False, simulate_gpu_count=1):
         result = subprocess.run(['nvidia-smi', f'--query-{kind}={fields}',
                                  '--format=csv,noheader,nounits'],
                                 capture_output=True, text=True, timeout=10, check=True)
-        return list(csv.reader(result.stdout.splitlines()))
-    gpus = [dict(index=int(i), uuid=u.strip(), free_mb=int(m), util=int(v))
-            for i, u, m, v in run('index,uuid,memory.free,utilization.gpu', 'gpu')]
-    apps = [(int(pid), uid.strip()) for pid, uid in run('pid,gpu_uuid', 'compute-apps')]
+        return [row for row in csv.reader(result.stdout.splitlines()) if row and any(v.strip() for v in row)]
+    gpus = []
+    for row in run('index,uuid,memory.free,utilization.gpu', 'gpu'):
+        try:
+            i, u, m, v = (value.strip() for value in row)
+            gpu = dict(index=int(i), uuid=u, free_mb=int(m), util=int(v))
+            if gpu['index'] < 0 or not u.startswith('GPU-') or gpu['free_mb'] < 0 or not 0 <= gpu['util'] <= 100:
+                raise ValueError()
+        except ValueError:
+            raise ValueError(f'Invalid or unavailable NVIDIA GPU metrics: {row!r}') from None
+        gpus.append(gpu)
+    apps = []
+    if query_apps:
+        for row in run('pid,gpu_uuid', 'compute-apps'):
+            try:
+                pid, uid = (value.strip() for value in row)
+                if int(pid) <= 0 or not uid.startswith(('GPU-', 'MIG-')):
+                    raise ValueError()
+                apps.append((int(pid), uid))
+            except ValueError:
+                raise ValueError(f'Invalid NVIDIA compute process data: {row!r}') from None
     if not gpus:
         raise ValueError('No NVIDIA GPUs detected')
     return gpus, apps
@@ -36,7 +53,8 @@ def process_group(pid):
 def policies(gpus, apps, active, history, last_launch, config, now):
     result = []
     known_groups = {row['pid'] for row in active if row['pid']}
-    unknown = {uid for pid, uid in apps if process_group(pid) not in known_groups}
+    unknown = ({uid for pid, uid in apps if process_group(pid) not in known_groups}
+               if config['ownership_mode'] == 'strict' else set())
     for gpu in gpus:
         index = gpu['index']
         key = str(index)

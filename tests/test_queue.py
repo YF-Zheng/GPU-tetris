@@ -171,12 +171,25 @@ class QueueTests(unittest.TestCase):
     def test_pause_during_probe_prevents_launch(self):
         self.fast()
         self.job()
-        def probe(_simulate):
+        def probe(_simulate, _count=1, **kwargs):
             self.assertEqual(self.cli('pause'), 0)
             return [dict(index=0, uuid='sim', free_mb=999999, util=0)], []
         with patch('gpu_tetris.scheduler.query', side_effect=probe):
             tick(self.pool, {}, {})
         self.assertEqual(snapshot(self.pool)['jobs'][0]['attempt'], 0)
+
+    def test_ownership_change_during_probe_requires_fresh_sample(self):
+        self.fast()
+        key = self.job()
+        def probe(_simulate, _count=1, **kwargs):
+            self.assertFalse(kwargs['query_apps'])
+            self.assertEqual(self.cli('config', '--set', 'ownership_mode="strict"'), 0)
+            return [dict(index=0, uuid='GPU-test', free_mb=30000, util=0)], []
+        with patch('gpu_tetris.scheduler.query', side_effect=probe):
+            tick(self.pool, {}, {})
+        data = snapshot(self.pool)
+        self.assertEqual(next(j for j in data['jobs'] if j['id'] == key)['attempt'], 0)
+        self.assertIn('fresh sample', data['error'])
 
     def test_cooldown_survives_restart(self):
         self.fast()
@@ -279,7 +292,24 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(self.policy(0, active), 'FULL')
 
     def test_unknown_compute_process_blocked(self):
+        self.config['ownership_mode'] = 'strict'
         self.assertEqual(self.policy(0, apps=[(999999999, 'GPU-test')]), 'UNKNOWN OWNER')
+
+    def test_single_user_external_process_keeps_resource_limits(self):
+        self.config.update(observation_seconds=0, launch_cooldown_seconds=0)
+        apps = [(999999999, 'GPU-test')]
+        self.assertEqual(self.policy(0, apps=apps), 'READY')
+        self.gpu['util'] = 90
+        self.assertEqual(self.policy(10, apps=apps), 'HOLD >=65%')
+        self.gpu.update(util=0, free_mb=1)
+        self.assertEqual(self.policy(20, apps=apps), 'LOW MEMORY')
+        self.gpu['free_mb'] = 30000
+        self.assertEqual(self.policy(30, [dict(pid=123, gpu=0), dict(pid=124, gpu=0)], apps), 'FULL')
+
+    def test_strict_recognizes_managed_process_group(self):
+        self.config.update(ownership_mode='strict', observation_seconds=0, launch_cooldown_seconds=0)
+        with patch('gpu_tetris.gpu.process_group', return_value=123):
+            self.assertEqual(self.policy(0, [dict(pid=123, gpu=0)], [(456, 'GPU-test')]), 'READY')
 
     def test_respects_configured_threshold_and_limit(self):
         self.config.update(per_gpu_limit=1, utilization_threshold=50)

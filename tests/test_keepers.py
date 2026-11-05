@@ -33,7 +33,7 @@ class KeeperLogicTests(unittest.TestCase):
         self.assertEqual(keepers.parse_mem('2048', 0), 2048 << 20)
         self.assertEqual(keepers.parse_mem('0', 0), 0)
         self.assertEqual(keepers.parse_mem('50%', 10 * gib), 5 * gib)
-        for bad in ('-1', '0%', '99%', 'abc'):
+        for bad in ('-1', '0%', '99%', 'abc', 'nan', 'inf', '1e309', '1e308G'):
             with self.assertRaises(ValueError):
                 keepers.parse_mem(bad, gib)
 
@@ -42,7 +42,10 @@ class KeeperLogicTests(unittest.TestCase):
         self.assertEqual(parse('steady', '--util', '45').util, 45.0)
         self.assertEqual(parse('burn').sm, 100.0)
         for argv in (['steady', '--util', '150'], ['wave', '--lo', '80', '--hi', '20'], ['floor', '--util', '0'],
-                     ['steady', '--sm', '0'], ['heartbeat', '--period', '0'], ['steady', '--mem', 'x']):
+                     ['steady', '--sm', '0'], ['heartbeat', '--period', '0'], ['steady', '--mem', 'x'],
+                     ['heartbeat', '--burst', '31'], ['steady', '--report', 'nan'],
+                     ['steady', '--report', '-1'], ['steady', '--max-seconds', 'inf'],
+                     ['steady', '--max-seconds', '-1'], ['steady', '--util', 'nan']):
             with self.assertRaises(ValueError):
                 parse(*argv)
 
@@ -117,7 +120,35 @@ class KeeperCliTests(unittest.TestCase):
         self.assertEqual(self.cli('submit', '--keeper', 'nope', '--'), 1)
         self.assertEqual(self.cli('submit', '--keeper', 'steady', '--', '--util', '999'), 1)
         self.assertEqual(self.cli('submit', '--per-gpu', '--', 'echo'), 1)
+        self.assertEqual(self.cli('submit', '--keeper', 'steady', '--per-gpu'), 1)
+        self.assertEqual(self.cli('submit', '--keeper-python', sys.executable, '--', 'echo'), 1)
+        for options in (['--mem', 'inf'], ['--report', 'nan'], ['--max-seconds', '-1']):
+            self.assertEqual(self.cli('submit', '--keeper', 'steady', '--', *options), 1)
+        self.assertEqual(self.cli('submit', '--keeper', 'heartbeat', '--', '--burst', '40'), 1)
         self.assertEqual(snapshot(self.pool)['jobs'], [])
+
+    def test_none_backend_does_not_require_torch(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from gpu_tetris.core import initialize
+        with tempfile.TemporaryDirectory() as tmp:
+            pool = Path(tmp) / 'real'
+            initialize(pool)
+            with patch('gpu_tetris.cli.subprocess.run', side_effect=AssertionError('must not probe torch')):
+                self.assertEqual(support.main(['--pool', str(pool), 'submit', '--keeper', 'steady',
+                                               '--', '--backend', 'none', '--max-seconds', '1']), 0)
+            self.assertEqual(len(snapshot(pool)['jobs']), 1)
+
+    def test_standalone_probe_defaults_to_first_gpu(self):
+        from unittest.mock import patch
+        import os
+        with patch.dict(os.environ, {}, clear=True), \
+                patch('gpu_tetris.keepers.ctypes.CDLL', side_effect=OSError), \
+                patch('gpu_tetris.keepers.subprocess.run') as run:
+            run.return_value.stdout = '42\n'
+            self.assertEqual(keepers.util_probe()(), 42)
+            self.assertEqual(run.call_args.args[0][-2:], ['-i', '0'])
 
     def test_keeper_runs_in_simulation_pool_and_exits_on_cancel(self):
         self.fast()
