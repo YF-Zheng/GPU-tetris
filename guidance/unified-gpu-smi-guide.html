@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>unified-gpu-smi 使用指引</title>
+<style>
+:root{
+  --paper:#f2ebdb; --paper2:#e9e0cb; --ink:#1c1b18; --mute:#6b6557; --line:#cfc4a9;
+  --term:#12171a; --term2:#1b2326; --termfg:#d5e3d0;
+  --green:#1f8a55; --lime:#8fd16a; --amber:#e08a00; --red:#c4402f; --blue:#2b5d9e;
+  --serif:"Iowan Old Style","Palatino Linotype","Songti SC","Noto Serif CJK SC","SimSun",Georgia,serif;
+  --sans:"Avenir Next","Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:"JetBrains Mono","Cascadia Mono","SF Mono",Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:24px}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.75 var(--sans);
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:48px 48px;background-position:-1px -1px;
+  background-color:var(--paper)}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
+  background:radial-gradient(1200px 600px at 85% -10%,rgba(224,138,0,.18),transparent 60%),
+             radial-gradient(900px 600px at -10% 40%,rgba(31,138,85,.14),transparent 60%),
+             linear-gradient(var(--paper) 0 0);opacity:.92}
+a{color:var(--blue)}
+code{font-family:var(--mono);font-size:.88em;background:rgba(28,27,24,.08);padding:.1em .4em;border-radius:4px}
+h1,h2,h3{font-family:var(--serif);line-height:1.2;margin:0}
+
+/* layout */
+.shell{max-width:1240px;margin:0 auto;padding:0 28px;display:grid;grid-template-columns:210px minmax(0,1fr);gap:56px}
+nav.toc{position:sticky;top:0;align-self:start;padding:34px 0;height:100vh;display:flex;flex-direction:column}
+.brand{font:700 15px var(--mono);letter-spacing:.02em;display:flex;gap:8px;align-items:center;margin-bottom:26px}
+.brand i{width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(31,138,85,.25);animation:pulse 2s infinite}
+nav.toc a{display:block;color:var(--mute);text-decoration:none;font-size:14px;padding:5px 0 5px 14px;border-left:2px solid var(--line);transition:.2s}
+nav.toc a b{font:500 11px var(--mono);margin-right:8px;opacity:.7}
+nav.toc a:hover{color:var(--ink)}
+nav.toc a.on{color:var(--ink);border-left-color:var(--amber);font-weight:600}
+.ver{margin-top:auto;font:12px var(--mono);color:var(--mute)}
+
+main{padding-bottom:120px;min-width:0}
+section{padding-top:84px}
+.sec-h{display:flex;align-items:baseline;gap:16px;margin-bottom:22px}
+.sec-h .n{font:700 14px var(--mono);color:var(--amber);border:1.5px solid var(--amber);border-radius:6px;padding:2px 8px}
+.sec-h h2{font-size:clamp(26px,3.4vw,36px)}
+p.lead{font-size:17px;color:#3b382f;max-width:70ch;margin:0 0 20px}
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .7s ease,transform .7s ease}
+.reveal.in{opacity:1;transform:none}
+
+/* hero */
+.hero{padding-top:70px}
+.tag{display:inline-flex;gap:10px;align-items:center;font:600 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  border:1.5px solid var(--ink);padding:5px 12px;border-radius:99px;background:var(--paper)}
+.tag em{font-style:normal;color:#fff;background:var(--amber);padding:1px 8px;border-radius:99px}
+.hero h1{font-size:clamp(44px,8vw,96px);letter-spacing:-.03em;margin:22px 0 14px;font-weight:800}
+.hero h1 span{color:var(--green);font-style:italic}
+.hero p{font-size:19px;max-width:60ch;color:#3b382f;margin:0 0 26px}
+.leds{display:flex;gap:6px;margin:30px 0 8px}
+.leds i{width:34px;height:12px;border-radius:3px;background:#2a3432;animation:led 3.2s infinite}
+.leds i:nth-child(3n){animation-delay:.6s}.leds i:nth-child(3n+1){animation-delay:1.3s}.leds i:nth-child(5n){animation-delay:2s}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-top:34px}
+.fact{background:var(--paper);border:1.5px solid var(--ink);border-radius:10px;padding:14px 16px;box-shadow:4px 4px 0 var(--ink)}
+.fact b{display:block;font:800 30px var(--serif)}
+.fact span{font-size:13px;color:var(--mute)}
+@keyframes led{0%,100%{background:#2a3432}8%,40%{background:var(--lime);box-shadow:0 0 10px var(--lime)}60%{background:var(--amber);box-shadow:0 0 10px var(--amber)}75%{background:#2a3432;box-shadow:none}}
+@keyframes pulse{50%{box-shadow:0 0 0 7px rgba(31,138,85,0)}}
+
+/* terminal blocks */
+.term{background:var(--term);color:var(--termfg);border-radius:12px;overflow:hidden;margin:16px 0 22px;box-shadow:6px 6px 0 rgba(28,27,24,.9);border:1.5px solid var(--ink)}
+.term .bar{display:flex;align-items:center;gap:7px;padding:9px 14px;background:var(--term2);font:12px var(--mono);color:#8fa39a}
+.term .bar i{width:10px;height:10px;border-radius:50%;background:#44504d}
+.term .bar i:nth-child(1){background:#d9644f}.term .bar i:nth-child(2){background:#e5b13a}.term .bar i:nth-child(3){background:#58b46f}
+.term .bar span{margin-left:8px}
+.term button{margin-left:auto;font:11px var(--mono);background:transparent;color:#a9bdb3;border:1px solid #3b4946;border-radius:5px;padding:3px 9px;cursor:pointer}
+.term button:hover{background:#2c3836;color:#fff}
+.term pre{margin:0;padding:16px 18px;overflow-x:auto;font:13.5px/1.7 var(--mono);white-space:pre}
+.term .c{color:#6f877c}.term .k{color:var(--lime)}.term .o{color:#f0b64a}.term .r{color:#ef7e6d}
+
+/* cards & grids */
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+.card{background:rgba(255,255,255,.55);border:1.5px solid var(--ink);border-radius:12px;padding:18px 20px}
+.card h3{font-size:19px;margin-bottom:6px}
+.card p{margin:0;font-size:15px;color:#3b382f}
+.card .ico{font:700 12px var(--mono);color:var(--green);margin-bottom:8px;display:block}
+.callout{border-left:5px solid var(--amber);background:rgba(224,138,0,.12);padding:14px 18px;border-radius:0 10px 10px 0;margin:20px 0;font-size:15px}
+.callout.red{border-color:var(--red);background:rgba(196,64,47,.1)}
+.callout.green{border-color:var(--green);background:rgba(31,138,85,.1)}
+.callout b:first-child{display:block;font-family:var(--mono);font-size:12px;letter-spacing:.08em;margin-bottom:2px}
+
+/* steps */
+.steps{counter-reset:s;list-style:none;padding:0;margin:0;display:grid;gap:14px}
+.steps li{counter-increment:s;position:relative;padding:0 0 0 58px}
+.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:40px;height:40px;border-radius:50%;background:var(--ink);color:var(--paper);display:grid;place-items:center;font:700 16px var(--mono)}
+.steps li::after{content:"";position:absolute;left:19px;top:44px;bottom:-14px;width:2px;background:var(--line)}
+.steps li:last-child::after{display:none}
+.steps h3{font-size:18px;font-family:var(--sans);margin-bottom:2px}
+.steps p{margin:0;color:#3b382f;font-size:15px}
+
+/* rules timeline */
+.rules{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin:18px 0}
+.rule{background:var(--paper);border:1.5px solid var(--ink);border-radius:10px;padding:14px;text-align:center}
+.rule big{display:block;font:800 34px var(--serif);color:var(--green)}
+.rule small{color:var(--mute);font-size:13px}
+
+/* table */
+.tw{overflow-x:auto;border:1.5px solid var(--ink);border-radius:12px;background:rgba(255,255,255,.55)}
+table{border-collapse:collapse;width:100%;font-size:14.5px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:600 12px var(--mono);letter-spacing:.06em;text-transform:uppercase;background:var(--paper2)}
+tr:last-child td{border-bottom:0}
+td:first-child{white-space:nowrap}
+.search{width:100%;padding:11px 14px;font:14px var(--mono);border:1.5px solid var(--ink);border-radius:10px;background:#fff;margin-bottom:12px}
+.search:focus{outline:3px solid rgba(224,138,0,.4)}
+
+/* tabs */
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.tabs button{font:600 13px var(--mono);padding:7px 13px;border:1.5px solid var(--ink);border-radius:99px;background:var(--paper);cursor:pointer}
+.tabs button.on{background:var(--ink);color:var(--paper)}
+.pane{display:none;background:rgba(255,255,255,.55);border:1.5px solid var(--ink);border-radius:12px;padding:18px 22px;margin-bottom:8px}
+.pane.on{display:block;animation:fade .35s}
+.pane h3{font-size:20px;margin-bottom:6px}
+.pane p{margin:4px 0}
+.pill{display:inline-block;font:600 11px var(--mono);padding:2px 9px;border-radius:99px;margin-right:6px;color:#fff}
+.pill.g{background:var(--green)}.pill.r{background:var(--red)}.pill.a{background:var(--amber)}.pill.b{background:var(--blue)}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}}
+
+/* simulator */
+.sim{background:var(--term);color:var(--termfg);border-radius:14px;border:1.5px solid var(--ink);box-shadow:8px 8px 0 var(--ink);padding:20px;margin:18px 0}
+.sim-top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:16px}
+.sim-top button{font:600 12.5px var(--mono);padding:8px 13px;border-radius:8px;border:1px solid #41514c;background:#1f2a2c;color:var(--termfg);cursor:pointer;transition:.15s}
+.sim-top button:hover{background:#2c3b3c;border-color:var(--lime)}
+.sim-top button.hot{background:var(--amber);color:#1c1b18;border-color:var(--amber)}
+.sim-top button.on{background:var(--lime);color:#13200f;border-color:var(--lime)}
+.sim-top .sp{flex:1}
+.sim-clock{font:12px var(--mono);color:#8fa39a}
+.gpus{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.g{background:#192124;border:1px solid #33433f;border-radius:10px;padding:12px;transition:border-color .3s}
+.g h4{margin:0 0 8px;font:700 13px var(--mono);display:flex;justify-content:space-between;align-items:center}
+.badge{font:700 10px var(--mono);padding:2px 7px;border-radius:99px;color:#101614;white-space:nowrap}
+.badge.READY{background:var(--lime)}.badge.OBS{background:#8fb5d9}.badge.HOLD{background:var(--amber)}
+.badge.FULL,.badge.EXCL{background:#c8a2e8}.badge.LOW{background:var(--red);color:#fff}.badge.FILL{background:#58c6c6}
+.meter{height:8px;background:#0e1415;border-radius:4px;overflow:hidden;margin:3px 0 7px}
+.meter i{display:block;height:100%;width:0;border-radius:4px;transition:width .5s,background .5s}
+.lab{font:11px var(--mono);color:#7f968d;display:flex;justify-content:space-between}
+.slots{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+.slot{min-height:26px;border:1px dashed #3a4b47;border-radius:6px;font:11px/26px var(--mono);text-align:center;color:#556a63;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px}
+.slot.t{border:1px solid var(--lime);color:var(--lime);background:rgba(143,209,106,.1)}
+.slot.x{border:1px solid #c8a2e8;color:#c8a2e8;background:rgba(200,162,232,.1)}
+.slot.f{border:1px solid #58c6c6;color:#58c6c6;background:rgba(88,198,198,.1)}
+.slot.rc{border:1px solid var(--red);color:var(--red);animation:blink .6s infinite alternate}
+@keyframes blink{to{opacity:.35}}
+.jt{margin-top:14px;overflow-x:auto}
+.jt table{font:12px var(--mono);color:var(--termfg)}
+.jt th{background:#1d282a;color:#8fa39a;border-color:#2c3a38}
+.jt td{border-color:#26332f;padding:6px 10px}
+.jt td.d{white-space:normal;color:#9fb5ab;min-width:240px}
+.jt .st-running{color:var(--lime)}.jt .st-queued{color:var(--amber)}.jt .st-complete{color:#6f877c}
+.evlog{margin-top:12px;font:12px/1.6 var(--mono);color:#8fa39a;max-height:112px;overflow:hidden}
+.evlog div:first-child{color:var(--termfg)}
+.legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;font:11px var(--mono);color:#8fa39a}
+
+/* flow diagram */
+.flow{display:flex;flex-wrap:wrap;gap:0;align-items:stretch;margin:18px 0}
+.flow div{flex:1 1 130px;border:1.5px solid var(--ink);padding:12px;background:var(--paper);text-align:center;font-size:14px;margin-left:-1.5px;position:relative}
+.flow div b{display:block;font:700 13px var(--mono)}
+.flow div small{color:var(--mute);font-size:12px}
+.flow div.hl{background:var(--ink);color:var(--paper)}
+.flow div.hl small{color:#cbc3ae}
+
+.check{list-style:none;padding:0;margin:0;display:grid;gap:8px}
+.check li{padding:10px 14px 10px 42px;position:relative;background:rgba(255,255,255,.55);border:1.5px solid var(--ink);border-radius:10px;font-size:15px}
+.check li::before{content:"";position:absolute;left:14px;top:14px;width:16px;height:16px;border-radius:4px;border:2px solid var(--ink)}
+.check li.done::before{background:var(--green);border-color:var(--green)}
+.check li.done::after{content:"✓";position:absolute;left:18px;top:8px;color:#fff;font-size:13px;font-weight:700}
+.check li small{color:var(--mute)}
+footer{margin-top:90px;padding-top:24px;border-top:2px solid var(--ink);font:13px var(--mono);color:var(--mute)}
+
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr;gap:0;padding:0 16px}
+  nav.toc{position:sticky;z-index:10;height:auto;flex-direction:row;overflow-x:auto;padding:10px 0;background:var(--paper);border-bottom:1.5px solid var(--ink);gap:4px}
+  nav.toc .brand,.ver{display:none}
+  nav.toc a{white-space:nowrap;border-left:0;border-bottom:2px solid var(--line);padding:4px 10px}
+  nav.toc a.on{border-bottom-color:var(--amber)}
+  section{padding-top:56px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.reveal{opacity:1;transform:none}html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<div class="shell">
+<nav class="toc" id="toc">
+  <div class="brand"><i></i>unified-gpu</div>
+  <a href="#top"><b>00</b>概览</a>
+  <a href="#play"><b>01</b>在线试玩</a>
+  <a href="#install"><b>02</b>安装</a>
+  <a href="#quick"><b>03</b>五分钟上手</a>
+  <a href="#rules"><b>04</b>调度规则</a>
+  <a href="#cmds"><b>05</b>命令速查</a>
+  <a href="#policy"><b>06</b>调度策略</a>
+  <a href="#filler"><b>07</b>占卡 Filler</a>
+  <a href="#multi"><b>08</b>多卡任务</a>
+  <a href="#diag"><b>09</b>排队诊断</a>
+  <a href="#safe"><b>10</b>恢复与边界</a>
+  <a href="#ship"><b>11</b>发布清单</a>
+  <div class="ver">v0.3.0 Alpha · MIT</div>
+</nav>
+
+<main id="top">
+<header class="hero">
+  <span class="tag">Alpha <em>v0.3.0</em> Linux · NVIDIA · Python 3.10+</span>
+  <h1>unified<span>-gpu-</span>smi</h1>
+  <p>单机 GPU 任务队列 + <code>nvidia-smi</code> 风格监控。按利用率、显存与观察窗口，把多个训练安全地<strong>共置</strong>在同一张卡上；调度器崩溃，训练不停。</p>
+  <div class="leds" aria-hidden="true"></div>
+  <div class="facts">
+    <div class="fact"><b>0</b><span>第三方运行时依赖</span></div>
+    <div class="fact"><b>2</b><span>每卡默认最多任务数</span></div>
+    <div class="fact"><b>60s</b><span>连续低利用率才补入</span></div>
+    <div class="fact"><b>5+4</b><span>队列策略 + 放置策略</span></div>
+  </div>
+  <div class="callout"><b>适用范围</b>适合单用户工作站或服务器，不是多租户集群调度器。仅运行同一用户的可信任务。</div>
+</header>
+
+<section id="play" class="reveal">
+  <div class="sec-h"><span class="n">01</span><h2>先玩一下：调度器是怎么想的</h2></div>
+  <p class="lead">这是一个浏览器里的简化模拟（1 tick = 10 秒，约 0.6 秒演示一次）。提交几个任务，观察每张 GPU 的状态徽章如何在 <code>OBSERVE</code> → <code>READY</code> → <code>HOLD</code> / <code>FULL</code> 之间切换。</p>
+  <div class="sim" id="sim">
+    <div class="sim-top">
+      <button class="hot" data-a="one">+ 单卡任务</button>
+      <button data-a="two">+ 双卡独占任务</button>
+      <button data-a="burst">+ 一次提交 5 个</button>
+      <button data-a="filler" id="bFill">占卡 Filler：关</button>
+      <button data-a="pause" id="bPause">暂停</button>
+      <button data-a="reset">重置</button>
+      <span class="sp"></span>
+      <span class="sim-clock" id="clock">t = 0 tick</span>
+    </div>
+    <div class="gpus" id="gpus"></div>
+    <div class="jt"><table><thead><tr><th>ID</th><th>NAME</th><th>TYPE</th><th>STATUS</th><th>GPUs</th><th>DETAIL</th></tr></thead><tbody id="jobs"></tbody></table></div>
+    <div class="evlog" id="ev"></div>
+    <div class="legend"><span>阈值 util&lt;65%</span><span>观察 6 tick</span><span>冷却 6 tick</span><span>最低空闲显存 16 GiB</span><span>每卡 ≤2</span><span>Filler 阈值 &lt;30% · 回收后 30 tick 再补入（演示压缩）</span></div>
+  </div>
+  <p style="font-size:14px;color:var(--mute)">提示：先开启 Filler，等 GPU 被占卡任务占住，再提交“双卡独占”任务，可以看到占卡被回收、普通任务接手的全过程。</p>
+</section>
+
+<section id="install" class="reveal">
+  <div class="sec-h"><span class="n">02</span><h2>安装</h2></div>
+  <div class="grid">
+    <div class="card"><span class="ico">推荐</span><h3>pipx</h3><p>克隆仓库后在项目根目录执行，命令全局可用。</p></div>
+    <div class="card"><span class="ico">隔离</span><h3>虚拟环境</h3><p>避免 PATH 问题，使用 <code>.venv/bin/unified-gpu</code>。</p></div>
+    <div class="card"><span class="ico">注意</span><h3>仅 Linux</h3><p>依赖 <code>/proc</code> 与 POSIX 进程组；Windows 只能阅读代码，不能运行调度。</p></div>
+  </div>
+  <div class="term"><div class="bar"><i></i><i></i><i></i><span>pipx</span><button data-copy>复制</button></div><pre>pipx install .
+pipx ensurepath
+unified-gpu --help</pre></div>
+  <div class="term"><div class="bar"><i></i><i></i><i></i><span>venv</span><button data-copy>复制</button></div><pre>python3 -m venv .venv
+.venv/bin/python -m pip install .
+.venv/bin/unified-gpu --help</pre></div>
+  <p><code>unified-gpu-smi</code> 是 <code>unified-gpu status</code> 的独立短入口。</p>
+</section>
+
+<section id="quick" class="reveal">
+  <div class="sec-h"><span class="n">03</span><h2>五分钟上手</h2></div>
+  <ol class="steps">
+    <li><h3>初始化独立队列池</h3><p>池里有 SQLite 数据库、日志和调度锁，与源码完全分离。</p></li>
+    <li><h3>自检</h3><p><code>doctor</code> 检查池是否可写，以及 <code>nvidia-smi</code> 查询是否正常。</p></li>
+    <li><h3>启动后台调度器</h3><p>重复执行不会启动第二个。也可用 <code>run</code> 前台运行并交给 systemd。</p></li>
+    <li><h3>提交任务</h3><p>命令按 argv 直接执行，<strong>不隐式启动 shell</strong>；需要管道请显式 <code>bash -lc '...'</code>。</p></li>
+    <li><h3>观察与查看日志</h3><p><code>--watch 2</code> 每 2 秒刷新调度快照。</p></li>
+  </ol>
+  <div class="term"><div class="bar"><i></i><i></i><i></i><span>真实 GPU</span><button data-copy>复制</button></div><pre>unified-gpu init
+unified-gpu doctor
+unified-gpu start
+unified-gpu submit --name experiment-1 --cwd /path/to/project -- python3 train.py --epochs 100
+unified-gpu-smi --watch 2
+unified-gpu logs JOB_ID -f --tail 50</pre></div>
+  <h3 style="margin-top:30px">没有 GPU？用模拟池演示</h3>
+  <p>模拟池执行真实 CPU 子进程，<code>CUDA_VISIBLE_DEVICES</code> 为空。模式在 <code>init</code> 时固定，不要把它用于训练。</p>
+  <div class="term"><div class="bar"><i></i><i></i><i></i><span>CPU 模拟</span><button data-copy>复制</button></div><pre>export UNIFIED_GPU_POOL="$HOME/.local/state/unified-gpu-demo"
+unified-gpu init --simulate
+unified-gpu config --set observation_seconds=0 --set launch_cooldown_seconds=0 --set poll_seconds=1
+unified-gpu start
+unified-gpu submit --name hello -- python3 -c 'print("hello queue")'
+unified-gpu-smi --watch 1
+unified-gpu stop</pre></div>
+  <div class="callout red"><b>CAUTION</b>只提交可信命令。任务参数、工作目录和日志可能含敏感数据，尽量不要通过命令行传递密钥。</div>
+</section>
+
+<section id="rules" class="reveal">
+  <div class="sec-h"><span class="n">04</span><h2>默认调度规则</h2></div>
+  <p class="lead">一个任务想进入某张卡，必须同时通过下列检查。<code>READY</code> 只表示资源条件满足，不是显存预留，也不保证某个具体任务马上派发。</p>
+  <div class="rules">
+    <div class="rule"><big>10s</big><small>采样间隔</small></div>
+    <div class="rule"><big>&lt;65%</big><small>利用率连续 60 秒低于此值</small></div>
+    <div class="rule"><big>60s</big><small>补入后冷却并重新观察</small></div>
+    <div class="rule"><big>16000</big><small>最低空闲显存 MiB</small></div>
+    <div class="rule"><big>≤2</big><small>每卡任务上限</small></div>
+  </div>
+  <div class="flow">
+    <div><b>CLI</b><small>submit / status</small></div>
+    <div><b>SQLite</b><small>持久任务池</small></div>
+    <div class="hl"><b>Scheduler</b><small>GPU 监控 · 策略 · 派发</small></div>
+    <div><b>Worker</b><small>独立监督进程</small></div>
+    <div><b>训练进程</b><small>UUID 绑定 GPU</small></div>
+  </div>
+  <div class="grid">
+    <div class="card"><h3>UUID 绑定</h3><p>用 GPU UUID 写入 <code>CUDA_VISIBLE_DEVICES</code>，避免设备枚举顺序差异。</p></div>
+    <div class="card"><h3>未知进程保护</h3><p>无法识别归属的 GPU 计算进程会让该卡显示 <code>UNKNOWN OWNER</code>，不派发。</p></div>
+    <div class="card"><h3>查询失败不盲发</h3><p><code>nvidia-smi</code> 查询失败时，调度器不会继续派发新任务。</p></div>
+    <div class="card"><h3>依赖不阻塞他人</h3><p>被依赖阻塞的任务不会挡住其余任务（<code>strict_fifo</code> 除外）。</p></div>
+  </div>
+</section>
+
+<section id="cmds" class="reveal">
+  <div class="sec-h"><span class="n">05</span><h2>命令速查</h2></div>
+  <input class="search" id="q" placeholder="搜索命令，例如 cancel、logs、pause…" aria-label="搜索命令">
+  <div class="tw"><table id="cmdT"><thead><tr><th>命令</th><th>功能</th></tr></thead><tbody>
+    <tr><td><code>unified-gpu init</code></td><td>初始化独立队列池（<code>--simulate</code> 为 CPU 模拟）</td></tr>
+    <tr><td><code>unified-gpu start</code></td><td>启动后台调度服务，重复调用不会启动第二个</td></tr>
+    <tr><td><code>unified-gpu run</code></td><td>前台运行，方便 systemd 托管</td></tr>
+    <tr><td><code>unified-gpu stop</code></td><td>停止调度服务；<strong>已运行任务继续执行</strong></td></tr>
+    <tr><td><code>unified-gpu submit -- PROGRAM ARG...</code></td><td>提交任务，返回任务 ID</td></tr>
+    <tr><td><code>unified-gpu-smi --watch 2</code></td><td>每 2 秒显示调度快照，Ctrl+C 退出</td></tr>
+    <tr><td><code>unified-gpu-smi --all</code></td><td>包含已完成任务</td></tr>
+    <tr><td><code>unified-gpu-smi --status failed</code></td><td>只显示指定状态，可重复指定</td></tr>
+    <tr><td><code>unified-gpu-smi --json</code></td><td>版本化 JSON（schema v2），不含任务环境变量</td></tr>
+    <tr><td><code>unified-gpu logs JOB_ID -f --tail 50</code></td><td>跟随当前尝试日志；<code>--raw</code> 输出未清理的原始日志</td></tr>
+    <tr><td><code>unified-gpu cancel JOB_ID</code></td><td>取消等待任务，或请求 worker 终止运行任务（异步）</td></tr>
+    <tr><td><code>unified-gpu retry JOB_ID</code></td><td>手动重试失败或已取消的任务</td></tr>
+    <tr><td><code>unified-gpu pause</code> / <code>resume</code></td><td>暂停／恢复新任务派发，不停止运行中任务</td></tr>
+    <tr><td><code>unified-gpu config [--set K=JSON]</code></td><td>查看或修改调度配置</td></tr>
+    <tr><td><code>unified-gpu doctor</code></td><td>检查池与 NVIDIA 查询</td></tr>
+    <tr><td><code>unified-gpu upgrade</code></td><td>升级旧池 schema（需先停止调度器并排空任务）</td></tr>
+  </tbody></table></div>
+  <h3 style="margin-top:28px">任务选项</h3>
+  <div class="term"><div class="bar"><i></i><i></i><i></i><span>submit options</span><button data-copy>复制</button></div><pre><span class="c"># 指定候选卡、最低空闲显存、环境变量</span>
+unified-gpu submit --name train --gpus 0,1 --min-free-mb 24000 --env OMP_NUM_THREADS=4 -- python3 train.py
+<span class="c"># 依赖：父任务成功后才运行</span>
+unified-gpu submit --name evaluate --depends JOB_ID -- python3 evaluate.py
+<span class="c"># 全局配置</span>
+unified-gpu config --set per_gpu_limit=1 --set utilization_threshold=50 --set 'allowed_gpus=[0,1]'</pre></div>
+  <p><strong>任务状态：</strong><code>queued</code> <code>blocked</code> <code>starting</code> <code>running</code> <code>complete</code> <code>failed</code> <code>cancelled</code>。退出码 0 才算完成；普通任务没有隐式自动重试。</p>
+  <div class="callout"><b>NOTE</b><code>--gpus</code> 是<strong>候选卡白名单</strong>，不是卡数；卡数用 <code>--gpu-count</code>。</div>
+</section>
+
+<section id="policy" class="reveal">
+  <div class="sec-h"><span class="n">06</span><h2>可组合的调度策略</h2></div>
+  <p class="lead"><code>queue_policy</code> 决定“先给谁”，<code>placement_policy</code> 决定“放哪张卡”。两者独立，且都不会绕过利用率、观察窗口、冷却、显存与每卡上限检查。</p>
+  <h3>队列策略</h3>
+  <div class="tabs" data-tabs="q">
+    <button class="on" data-p="fifo">fifo（默认）</button><button data-p="strict">strict_fifo</button><button data-p="prio">priority</button><button data-p="small">small_first</button><button data-p="large">large_first</button>
+  </div>
+  <div id="q-fifo" class="pane on"><span class="pill g">回填</span><p>按提交时间尝试；队首资源不足或依赖未满足时，后面的任务可以先跑。不是基于运行时间预估的 EASY backfill。</p></div>
+  <div id="q-strict" class="pane"><span class="pill r">队首阻塞</span><p>队首无法启动时，后续任务一律不派发。缓解大任务饥饿，但会牺牲利用率。</p></div>
+  <div id="q-prio" class="pane"><span class="pill b">老化</span><p>有效优先级 = <code>priority + floor(等待秒数 / priority_aging_seconds)</code>，默认每 300 秒加 1；同分按提交时间。</p><p><code>unified-gpu submit --priority 10 -- python3 urgent_train.py</code></p></div>
+  <div id="q-small" class="pane"><span class="pill a">卡数少优先</span><p>按申请卡数从少到多，不是按预计运行时间。大任务可能长时间等待。</p></div>
+  <div id="q-large" class="pane"><span class="pill a">卡数多优先</span><p>按申请卡数从多到少，便于尽早处理大卡组。</p></div>
+  <h3 style="margin-top:24px">放置策略</h3>
+  <div class="tabs" data-tabs="p">
+    <button class="on" data-p="bal">balanced（默认）</button><button data-p="pack">pack</button><button data-p="spread">spread</button><button data-p="free">most_free</button>
+  </div>
+  <div id="p-bal" class="pane on"><p>槽位少 → 利用率低 → 空闲显存多。均衡使用各张卡。</p></div>
+  <div id="p-pack" class="pane"><p>槽位多 → 满足要求的空闲显存较少。把共享任务集中起来，<strong>尽量留下整卡</strong>给多卡任务。</p></div>
+  <div id="p-spread" class="pane"><p>槽位少 → 空闲显存多 → 利用率低。尽量分散。</p></div>
+  <div id="p-free" class="pane"><p>空闲显存多 → 槽位少 → 利用率低。优先放到显存最空的卡。</p></div>
+  <div class="term"><div class="bar"><i></i><i></i><i></i><span>切换策略</span><button data-copy>复制</button></div><pre>unified-gpu config --set 'queue_policy="priority"' --set 'placement_policy="pack"'
+unified-gpu config --set priority_aging_seconds=300</pre></div>
+  <p style="color:var(--mute);font-size:14px">改配置只影响后续派发并重置观察窗口，不抢占在跑任务；不支持优先级抢占。</p>
+</section>
+
+<section id="filler" class="reveal">
+  <div class="sec-h"><span class="n">07</span><h2>最低优先级占卡（Filler / Keeper）</h2></div>
+  <p class="lead">Filler 是你自己提供的“占卡程序”：卡闲时补上去，普通任务来了就让路。调度器不自带 GPU 压力程序，也不会接管旧 keeper。</p>
+  <div class="term"><div class="bar"><i></i><i></i><i></i><span>filler</span><button data-copy>复制</button></div><pre>unified-gpu config --set filler_enabled=true --set filler_utilization_threshold=30
+unified-gpu submit --filler --name filler-0 --gpus 0 -- /你的环境/bin/python /你的程序/gpu_keeper.py
+unified-gpu submit --filler --name filler-1 --gpus 1 -- /你的环境/bin/python /你的程序/gpu_keeper.py</pre></div>
+  <div class="grid">
+    <div class="card"><span class="ico">TIER</span><h3>永远最低</h3><p>所有队列策略下都排在普通任务之后；不参与老化，不允许 <code>--priority</code>，仅单卡 shared，每卡 ≤1。</p></div>
+    <div class="card"><span class="ico">ADMIT</span><h3>更严格的准入</h3><p>观察窗口内利用率必须始终<strong>严格低于</strong> <code>filler_utilization_threshold</code>（默认 30%）。</p></div>
+    <div class="card"><span class="ico">REARM</span><h3>回收后 30 分钟滞回</h3><p>被调度器回收的卡，需再等 <code>filler_rearm_seconds</code>（默认 1800）才允许补入新的占卡。重启调度器后仍有效。</p></div>
+    <div class="card"><span class="ico">YIELD</span><h3>协作式回收</h3><p>普通任务无法启动时，调度器请求相关 filler 退出并重新排队；清理完成后才放行普通任务。</p></div>
+  </div>
+  <div class="callout"><b>NOTE</b>人工取消、正常退出、异常失败的 filler 都不会自动重启。占卡程序应可随时中断，且无必须保留的计算状态。</div>
+  <div class="term"><div class="bar"><i></i><i></i><i></i><span>调整滞回</span><button data-copy>复制</button></div><pre>unified-gpu config --set filler_rearm_seconds=600</pre></div>
+</section>
+
+<section id="multi" class="reveal">
+  <div class="sec-h"><span class="n">08</span><h2>单任务多卡</h2></div>
+  <p class="lead">多卡任务全有或全无：只有所需卡<strong>同时</strong>满足条件，才在同一事务中认领整组；缺卡时零预留、零 attempt 增量。</p>
+  <div class="term"><div class="bar"><i></i><i></i><i></i><span>multi-gpu</span><button data-copy>复制</button></div><pre>unified-gpu submit --name ddp-4 --gpu-count 4 --gpus 0,1,2,3,4,5,6,7 --min-free-mb 24000 \
+  -- torchrun --standalone --nnodes=1 --nproc-per-node=4 train.py
+unified-gpu submit --name shared-2 --gpu-count 2 --sharing shared -- python3 multi_gpu_program.py</pre></div>
+  <div class="grid">
+    <div class="card"><h3>默认独占</h3><p>多卡默认 <code>exclusive</code>：每张卡必须没有本池任务。单卡默认 <code>shared</code>。</p></div>
+    <div class="card"><h3>逻辑卡号</h3><p>物理卡 2、5 在任务内映射为逻辑卡 0、1，不要在命令里再硬编码物理索引。</p></div>
+    <div class="card"><h3>显存门槛按卡算</h3><p><code>--min-free-mb</code> 是<strong>每张卡</strong>的空闲显存，不是总和。</p></div>
+    <div class="card"><h3>进程数自己管</h3><p>调度器不会把脚本改造成 DDP。<code>torchrun</code> 的进程数需与 <code>--gpu-count</code> 一致，并用 <code>--standalone</code> 避免端口冲突。</p></div>
+  </div>
+  <div class="callout red"><b>LIMITS</b>“独占”只是本池的逻辑独占，不是驱动锁或 cgroup 隔离；不支持 NVLink/NUMA 拓扑、MIG、多节点、弹性伸缩或硬显存预留。</div>
+</section>
+
+<section id="diag" class="reveal">
+  <div class="sec-h"><span class="n">09</span><h2>读懂排队原因</h2></div>
+  <p class="lead">任务排队时，状态表的 <code>DETAIL</code> 列会逐卡列出为什么这张卡不行。</p>
+  <div class="term"><div class="bar"><i></i><i></i><i></i><span>DETAIL</span></div><pre>Waiting for 2 eligible GPUs (exclusive, 24000 MiB per GPU):
+  GPU0: <span class="o">HOLD &gt;=65%</span>;
+  GPU1: <span class="r">LOW MEMORY 100&lt;24000 MiB</span>;
+  GPU2: <span class="o">NOT EMPTY (1 tasks, exclusive needed)</span>;
+  GPU3: <span class="k">READY</span></pre></div>
+  <div class="tw"><table><thead><tr><th>标记</th><th>含义</th><th>怎么办</th></tr></thead><tbody>
+    <tr><td><span class="pill g">READY</span></td><td>该卡满足资源条件</td><td>等待调度循环派发</td></tr>
+    <tr><td><span class="pill b">OBSERVE / COOLDOWN</span></td><td>观察窗口未满或冷却中</td><td>等待，刚补入任务后会重置</td></tr>
+    <tr><td><span class="pill a">HOLD &gt;=65%</span></td><td>当前利用率过高</td><td>等待，或调高 <code>utilization_threshold</code></td></tr>
+    <tr><td><span class="pill r">LOW MEMORY</span></td><td>空闲显存低于门槛</td><td>降低 <code>--min-free-mb</code> 或等待释放</td></tr>
+    <tr><td><span class="pill b">FULL</span> / <span class="pill b">EXCLUSIVE</span></td><td>达到每卡上限或被独占</td><td>等任务结束，或调整 <code>per_gpu_limit</code></td></tr>
+    <tr><td><span class="pill r">UNKNOWN OWNER</span></td><td>有未被本池识别的 GPU 进程</td><td>确认进程来源；容器环境可能 PID 无法映射</td></tr>
+    <tr><td><span class="pill a">PAUSED / DISABLED</span></td><td>已 <code>pause</code> 或不在 <code>allowed_gpus</code></td><td><code>unified-gpu resume</code> 或检查配置</td></tr>
+  </tbody></table></div>
+  <div class="callout"><b>STALE</b>如果状态表提示心跳过期（<code>STALE</code>），说明调度器没在运行，资源策略显示不是最新的——先 <code>unified-gpu start</code>。</div>
+</section>
+
+<section id="safe" class="reveal">
+  <div class="sec-h"><span class="n">10</span><h2>恢复、取消与安全边界</h2></div>
+  <div class="grid">
+    <div class="card"><span class="ico">INDEPENDENT</span><h3>Worker 独立于调度器</h3><p>服务停止、SSH 退出或重启，都不会主动结束训练。</p></div>
+    <div class="card"><span class="ico">IDENTITY</span><h3>进程身份校验</h3><p>boot ID + PID 启动时钟，避免把复用的 PID 当成旧任务。</p></div>
+    <div class="card"><span class="ico">HANDSHAKE</span><h3>启动握手</h3><p>先持久化身份，再通过管道放行真正的训练命令。</p></div>
+    <div class="card"><span class="ico">NO-RERUN</span><h3>缺凭据不重跑</h3><p>没有退出凭据的尝试不自动重跑；worker 丢失时保留槽位，<code>cancel</code> 清理后再重试。</p></div>
+  </div>
+  <div class="callout red"><b>NOT A SANDBOX</b>取消会清理进程组及带同一 attempt 标识的同用户子进程，必要时 SIGKILL。这不是 cgroup 沙箱：删除 <code>UNIFIED_ATTEMPT_TOKEN</code>、脱离进程组或通过容器逃离监督的任务，无法保证清理完整。</div>
+  <ul>
+    <li>不提供 exactly-once 外部副作用保证。异常任务重试前，请检查已写入文件、外部服务和 checkpoint。</li>
+    <li>池目录含数据库、日志、退出凭据，不要放到公开仓库、NFS 或不可信共享目录。</li>
+    <li>不要在同一组 GPU 上同时运行多个池，也不要与其他调度器混用。</li>
+    <li>升级：先停止调度器并排空任务，备份整个池，再 <code>unified-gpu upgrade</code>，最后 <code>unified-gpu start</code>。</li>
+  </ul>
+</section>
+
+<section id="ship" class="reveal">
+  <div class="sec-h"><span class="n">11</span><h2>发布前清单</h2></div>
+  <ul class="check">
+    <li class="done">Keeper 30 分钟滞回 <code>filler_rearm_seconds</code> <small>· 已实现</small></li>
+    <li class="done">逐卡排队原因诊断 <small>· 已实现</small></li>
+    <li class="done">MIT <code>LICENSE</code> 与 <code>pyproject.toml</code> 声明 <small>· 已补充</small></li>
+    <li class="done"><code>CHANGELOG.md</code>、真机测试清单、Benchmark 方案 <small>· 已补充</small></li>
+    <li>在 Linux / CI 上跑完整 <code>unittest</code>（含新增的 re-arm 与 diagnose 用例）</li>
+    <li>真实 NVIDIA（如 8 卡 H20）端到端验证，见 <code>docs/real-gpu-validation.md</code></li>
+    <li>跑 <code>docs/benchmark.md</code> 的对比：动态共置 vs 独占 FIFO 的吞吐</li>
+    <li>录制 README 操作 GIF</li>
+    <li>决定版本号：<code>0.3.0</code> 还是 <code>0.3.0-alpha</code></li>
+  </ul>
+  <div class="term"><div class="bar"><i></i><i></i><i></i><span>开发验证</span><button data-copy>复制</button></div><pre>python3 -m venv .venv
+.venv/bin/python -m pip install -e .
+.venv/bin/python -W error::ResourceWarning -m unittest discover -s tests -v
+.venv/bin/python -m pip wheel --no-deps . -w dist</pre></div>
+</section>
+<footer>unified-gpu-smi v0.3.0 Alpha · MIT · 本页仅为使用指引，模拟器为简化模型，实际行为以源码与 README 为准。</footer>
+</main>
+</div>
+
+<script>
+// LED strip
+document.querySelector('.leds').innerHTML = '<i></i>'.repeat(12);
+
+// copy buttons
+document.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',()=>{
+  const t=b.closest('.term').querySelector('pre').innerText;
+  (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).catch(()=>{
+    const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove();
+  });
+  b.textContent='已复制';setTimeout(()=>b.textContent='复制',1200);
+}));
+
+// tabs
+document.querySelectorAll('.tabs').forEach(tabs=>{
+  const g=tabs.dataset.tabs;
+  tabs.addEventListener('click',e=>{
+    const b=e.target.closest('button');if(!b)return;
+    tabs.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    document.querySelectorAll('[id^="'+g+'-"]').forEach(p=>p.classList.toggle('on',p.id===g+'-'+b.dataset.p));
+  });
+});
+
+// command search
+document.getElementById('q').addEventListener('input',e=>{
+  const v=e.target.value.toLowerCase();
+  document.querySelectorAll('#cmdT tbody tr').forEach(r=>r.style.display=r.textContent.toLowerCase().includes(v)?'':'none');
+});
+
+// reveal + toc highlight
+const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('in')}),{threshold:.08});
+document.querySelectorAll('.reveal').forEach(s=>io.observe(s));
+const links=[...document.querySelectorAll('#toc a')];
+const spy=new IntersectionObserver(es=>es.forEach(e=>{
+  if(e.isIntersecting){links.forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+e.target.id));}
+}),{rootMargin:'-30% 0px -60% 0px'});
+document.querySelectorAll('main#top, section').forEach(s=>spy.observe(s));
+
+/* ---------- scheduler simulator (simplified model) ---------- */
+const C={limit:2,thr:65,obs:6,cool:6,minFree:16,total:96,fThr:30,rearm:30,fUtil:20,fMem:4};
+let S, paused=false, timer;
+const rnd=(a,b)=>Math.floor(a+Math.random()*(b-a+1));
+function reset(){
+  S={t:0,nid:1,fill:false,jobs:[],log:[],
+     gpus:Array.from({length:4},(_,i)=>({i,low:3,lowF:3,cool:0,rearm:-999,util:0,free:C.total,count:0,pol:'OBS'}))};
+  document.getElementById('bFill').textContent='占卡 Filler：关';
+  document.getElementById('bFill').classList.remove('on');
+  ev('池已初始化：4 张模拟 GPU（96 GiB）');
+  render();
+}
+function ev(m){S.log.unshift('['+String(S.t).padStart(3,'0')+'] '+m);S.log=S.log.slice(0,6)}
+function newJob(n){
+  const id=(S.nid++).toString(16).padStart(2,'0')+rnd(1000,9999).toString(16);
+  return {id,name:(n>1?'ddp-':'train-')+S.nid,n,excl:n>1,util:n>1?rnd(60,80):rnd(35,75),mem:n>1?30:rnd(20,40),
+          left:rnd(30,60),state:'queued',gpus:[],filler:false,detail:''};
+}
+function running(g){return S.jobs.filter(j=>(j.state==='running'||j.state==='reclaiming')&&j.gpus.includes(g.i))}
+function measure(){
+  for(const g of S.gpus){
+    const occ=running(g);
+    g.count=occ.length;
+    const sum=occ.reduce((a,j)=>a+(j.state==='reclaiming'?0:j.util),0);
+    g.util=occ.length?Math.min(100,Math.max(0,sum+rnd(-3,3))):rnd(0,2);
+    g.free=C.total-occ.reduce((a,j)=>a+j.mem,0);
+    g.low=g.util<C.thr?g.low+1:0;
+    g.lowF=g.util<C.fThr?g.lowF+1:0;
+    if(g.cool>0)g.cool--;
+  }
+}
+function policy(g,view){
+  const occ=view||running(g);
+  if(occ.some(j=>j.excl))return 'EXCL';
+  if(occ.length>=C.limit)return 'FULL';
+  if(g.util>=C.thr)return 'HOLD';
+  if(g.free<C.minFree)return 'LOW';
+  if(g.low<C.obs||g.cool>0)return 'OBS';
+  return 'READY';
+}
+const LABEL={READY:'READY',OBS:'OBSERVE/COOL',HOLD:'HOLD ≥65%',FULL:'FULL',EXCL:'EXCLUSIVE',LOW:'LOW MEMORY',FILL:'FILLER'};
+function pick(job,views){
+  const c=views.filter(v=>v.pol==='READY'&&v.free>=C.minFree&&(!job.excl||v.count===0));
+  c.sort((a,b)=>a.count-b.count||a.util-b.util||b.free-a.free||a.i-b.i);
+  return c.length>=job.n?c.slice(0,job.n).map(v=>v.i).sort():null;
+}
+function launch(job,ids){
+  job.state='running';job.gpus=ids;job.detail='';
+  for(const i of ids){const g=S.gpus[i];g.low=0;g.lowF=0;g.cool=C.cool;}
+  ev((job.filler?'filler ':'')+job.name+' → GPU'+ids.join(','));
+}
+function tick(){
+  S.t++;
+  for(const j of S.jobs){
+    if(j.state==='running'&&!j.filler&&--j.left<=0){j.state='complete';ev(j.name+' 完成，释放 GPU'+j.gpus.join(','));j.freed=j.gpus;j.gpus=[];}
+    else if(j.state==='reclaiming'&&--j.rc<=0){
+      for(const i of j.gpus){const g=S.gpus[i];g.low=0;g.lowF=0;g.rearm=S.t;g.cool=C.cool;}
+      ev(j.name+' 已退出，GPU'+j.gpus.join(',')+' 进入 '+C.rearm+' tick 再补入窗口');
+      j.state='gone';j.gpus=[];
+    }
+  }
+  S.jobs=S.jobs.filter(j=>j.state!=='gone'&&!(j.state==='complete'&&S.t-(j.doneAt||(j.doneAt=S.t))>6));
+  measure();
+  const views=S.gpus.map(g=>({i:g.i,count:g.count,util:g.util,free:g.free,pol:policy(g),g}));
+  views.forEach(v=>v.g.pol=v.pol);
+  // normal jobs: FIFO with backfill
+  const queued=S.jobs.filter(j=>j.state==='queued'&&!j.filler);
+  const demand=new Set();
+  for(const job of queued){
+    const ids=pick(job,views);
+    if(ids){
+      launch(job,ids);
+      ids.forEach(i=>{const v=views[i];v.count++;v.pol=job.excl?'EXCL':(v.count>=C.limit?'FULL':'OBS');v.g.pol=v.pol;});
+      continue;
+    }
+    // would removing fillers help?
+    const alt=views.map(v=>{
+      const fs=running(v.g).filter(j=>j.filler&&j.state==='running');
+      if(!fs.length)return v;
+      const rest=running(v.g).filter(j=>!fs.includes(j));
+      const u=Math.max(0,v.util-fs.reduce((a,j)=>a+j.util,0));
+      const free=v.free+fs.reduce((a,j)=>a+j.mem,0);
+      const tmp={...v,count:rest.length,util:u,free};
+      const g2={i:v.i,util:u,free,low:C.obs,cool:0};
+      tmp.pol=policy(g2,rest);
+      return tmp;
+    });
+    const ids2=pick(job,alt);
+    if(ids2){
+      ids2.forEach(i=>{demand.add(i);
+        running(S.gpus[i]).filter(j=>j.filler&&j.state==='running').forEach(f=>{
+          f.state='reclaiming';f.rc=2;ev('普通任务 '+job.name+' 需要 GPU'+i+'，请求回收 '+f.name);});});
+    }
+    job.detail='Waiting for '+job.n+' eligible GPUs ('+(job.excl?'exclusive':'shared')+'): '+
+      views.map(v=>'GPU'+v.i+': '+(v.pol==='READY'&&job.excl&&v.count?'NOT EMPTY':LABEL[v.pol])).join('; ');
+  }
+  // fillers
+  if(S.fill){
+    for(const g of S.gpus){
+      if(running(g).some(j=>j.filler))continue;
+      const hasQ=S.jobs.some(j=>j.state==='queued'&&!j.filler);
+      const p=g.pol;
+      const ok=g.lowF>=C.obs&&g.cool<=0&&g.free>=C.minFree&&g.count<C.limit&&S.t-g.rearm>=C.rearm
+               &&['READY','OBS','HOLD'].includes(p)&&!demand.has(g.i)&&!hasQ;
+      if(ok){
+        const f={id:'f'+(S.nid++).toString(16)+rnd(100,999).toString(16),name:'filler-'+g.i,n:1,excl:false,util:C.fUtil,mem:C.fMem,left:1e9,
+                 state:'queued',gpus:[],filler:true,detail:''};
+        S.jobs.push(f);launch(f,[g.i]);g.count++;g.pol='FILL';
+      }else if(S.t-g.rearm<C.rearm&&g.rearm>0){/* in hysteresis */}
+    }
+  }
+  for(const g of S.gpus) if(running(g).some(j=>j.filler&&j.state==='running')&&!['EXCL','FULL'].includes(g.pol)) g.badge='FILL';
+  render();
+}
+function render(){
+  document.getElementById('clock').textContent='t = '+S.t+' tick (≈'+S.t*10+'s)';
+  document.getElementById('gpus').innerHTML=S.gpus.map(g=>{
+    const occ=running(g);
+    const hasF=occ.some(j=>j.filler&&j.state==='running');
+    let pol=g.pol; 
+    const uc=g.util>=C.thr?'#e08a00':'#8fd16a';
+    const slots=[0,1].map(k=>{
+      const j=occ[k];
+      if(!j)return '<div class="slot">空</div>';
+      const cls=j.state==='reclaiming'?'rc':j.filler?'f':j.excl?'x':'t';
+      return '<div class="slot '+cls+'">'+j.name+(j.state==='reclaiming'?' ↩':'')+'</div>';
+    }).join('');
+    const rear=(g.rearm>0&&S.t-g.rearm<C.rearm&&S.fill)?'<div class="lab" style="margin-top:6px"><span>re-arm</span><span>'+(C.rearm-(S.t-g.rearm))+' tick</span></div>':'';
+    return '<div class="g"><h4>GPU'+g.i+'<span class="badge '+(hasF&&pol!=='EXCL'&&pol!=='FULL'&&pol!=='READY'?'FILL':pol)+'">'+(hasF&&pol!=='EXCL'&&pol!=='FULL'&&pol!=='READY'?'FILLER':LABEL[pol])+'</span></h4>'+
+      '<div class="lab"><span>UTIL</span><span>'+g.util+'%</span></div><div class="meter"><i style="width:'+g.util+'%;background:'+uc+'"></i></div>'+
+      '<div class="lab"><span>FREE</span><span>'+g.free+' / '+C.total+' GiB</span></div><div class="meter"><i style="width:'+(100-g.free/C.total*100)+'%;background:#8fb5d9"></i></div>'+
+      '<div class="lab"><span>TASKS</span><span>'+occ.length+'/'+C.limit+'</span></div><div class="slots">'+slots+'</div>'+rear+'</div>';
+  }).join('');
+  document.getElementById('jobs').innerHTML=S.jobs.slice().reverse().slice(0,8).map(j=>
+    '<tr><td>'+j.id+'</td><td>'+j.name+'</td><td>'+(j.filler?'FILLER':'TRAIN')+'</td><td class="st-'+(j.state==='reclaiming'?'queued':j.state)+'">'+(j.state==='reclaiming'?'reclaiming':j.state)+'</td><td>'+(j.gpus.join(',')||'-')+'</td><td class="d">'+(j.state==='queued'?j.detail:'')+'</td></tr>'
+  ).join('')||'<tr><td colspan="6" style="color:#6f877c">暂无任务，点击上方按钮提交</td></tr>';
+  document.getElementById('ev').innerHTML=S.log.map(l=>'<div>'+l+'</div>').join('');
+}
+document.getElementById('sim').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const a=b.dataset.a;
+  if(a==='one'){S.jobs.push(newJob(1));ev('提交单卡任务');}
+  else if(a==='two'){S.jobs.push(newJob(2));ev('提交双卡独占任务');}
+  else if(a==='burst'){for(let i=0;i<5;i++)S.jobs.push(newJob(1));ev('一次提交 5 个单卡任务');}
+  else if(a==='filler'){S.fill=!S.fill;b.textContent='占卡 Filler：'+(S.fill?'开':'关');b.classList.toggle('on',S.fill);ev('filler_enabled='+S.fill);}
+  else if(a==='pause'){paused=!paused;b.textContent=paused?'继续':'暂停';b.classList.toggle('on',paused);}
+  else if(a==='reset'){reset();return;}
+  render();
+});
+reset();
+timer=setInterval(()=>{if(!paused)tick()},600);
+</script>
+</body>
+</html>
